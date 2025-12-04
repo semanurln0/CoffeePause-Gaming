@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Svg" Version="3.4.7" />
+    <PackageReference Include="Microsoft.VisualBasic" Version="10.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\Assets\sprites\*.svg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>assets\sprites\%(Filename)%(Extension)</Link>
+    </Content>
+    <Content Include="..\..\Assets\sprites\*.jpg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>assets\sprites\%(Filename)%(Extension)</Link>
+    </Content>
+  </ItemGroup>
+
+</Project>
