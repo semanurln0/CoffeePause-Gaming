@@ -12,6 +12,7 @@ public partial class SudokuForm : Form
     
     private Panel? gamePanel;
     private Point? selectedCell = null;
+    private bool isRightMouseMode = false; // Track if last click was right mouse button
     private HighScoreManager scoreManager = new HighScoreManager();
     private Label? instructLabel;
     private Button? newPuzzleBtn;
@@ -57,8 +58,8 @@ public partial class SudokuForm : Form
         instructLabel = new Label
         {
             Location = new Point(GridSize * CellSize + 30, 40),
-            Size = new Size(200, 100),
-            Text = "Click cell, then:\nNumber: Enter value\n(blue)\n\nCtrl + Number:\nDraft (red)\n\nBackspace: Clear",
+            Size = new Size(200, 120),
+            Text = "Click cell, then:\n\nLMB + Number:\nSubmit value (blue)\n\nRMB + Number:\nAdd note (red)\n\nBackspace: Clear",
             Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
         this.Controls.Add(instructLabel);
@@ -232,6 +233,8 @@ public partial class SudokuForm : Form
             if (!isFixed[row, col])
             {
                 selectedCell = new Point(col, row);
+                // Track which mouse button was used
+                isRightMouseMode = (e.Button == MouseButtons.Right);
                 gamePanel?.Invalidate();
             }
         }
@@ -257,14 +260,14 @@ public partial class SudokuForm : Form
         {
             int num = e.KeyCode - Keys.D0;
             
-            if (e.Control)
+            if (isRightMouseMode)
             {
-                // Draft mode (red)
+                // Draft mode (red) - RMB was clicked
                 drafts[row, col].Add(num.ToString());
             }
             else
             {
-                // Submit mode (blue)
+                // Submit mode (blue) - LMB was clicked
                 puzzle[row, col] = num;
                 drafts[row, col].Clear();
             }
@@ -275,14 +278,14 @@ public partial class SudokuForm : Form
         {
             int num = e.KeyCode - Keys.NumPad0;
             
-            if (e.Control)
+            if (isRightMouseMode)
             {
-                // Draft mode (red)
+                // Draft mode (red) - RMB was clicked
                 drafts[row, col].Add(num.ToString());
             }
             else
             {
-                // Submit mode (blue)
+                // Submit mode (blue) - LMB was clicked
                 puzzle[row, col] = num;
                 drafts[row, col].Clear();
             }

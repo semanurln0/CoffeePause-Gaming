@@ -2,9 +2,17 @@ namespace GameLauncher;
 
 public partial class SpiderSolitaireForm : Form
 {
-    private const int CardWidth = 80;
+    private const int CardWidth = 85; // Increased from 80 for better text display
     private const int CardHeight = 120;
     private const int CardOffset = 25;
+    private const int CardSpacing = 5; // Space between cards
+    private const int FoundationSpacing = 10; // Space between foundation piles
+    
+    // Layout constants for new design
+    private const int ButtonPanelHeight = 60;
+    private const int StockAreaY = 70;
+    private const int TableauAreaY = 200;
+    private const int CardsPerStockDeal = 10;
     
     private List<List<Card>> tableau = new List<List<Card>>();
     private List<Card> stock = new List<Card>();
@@ -24,7 +32,7 @@ public partial class SpiderSolitaireForm : Form
     private Point animationStart;
     private Point animationEnd;
     private int animationFrame = 0;
-    private const int AnimationFrames = 15;
+    private const int AnimationFrames = 4; // Faster animation (was 8)
     private int animationTargetColumn = -1;
     private int animationSourceColumn = -1;
     private int animationSourceCardIndex = -1;
@@ -39,9 +47,16 @@ public partial class SpiderSolitaireForm : Form
     
     private int suitCount = 1; // 1, 2, or 4 suits
     private int score = 0;
+    private int moves = 0;
+    private DateTime startTime;
     private Panel? gamePanel;
     private Label? scoreLabel;
     private HighScoreManager scoreManager = new HighScoreManager();
+    
+    // Card image caching
+    private Dictionary<string, Image> cardImageCache = new Dictionary<string, Image>();
+    private Image? cardBackImage = null;
+    private Image? backgroundImage = null;
     
     public SpiderSolitaireForm()
     {
@@ -52,8 +67,8 @@ public partial class SpiderSolitaireForm : Form
     private void InitializeComponent()
     {
         this.Text = "Spider Solitaire";
-        this.Size = new Size(900, 700);
-        this.MinimumSize = new Size(900, 700);
+        this.Size = new Size(1100, 850);
+        this.MinimumSize = new Size(1100, 850);
         this.StartPosition = FormStartPosition.CenterScreen;
         this.FormBorderStyle = FormBorderStyle.Sizable;
         this.KeyPreview = true;
@@ -61,25 +76,70 @@ public partial class SpiderSolitaireForm : Form
         this.Resize += SpiderSolitaireForm_Resize;
         this.DoubleBuffered = true;
         
-        // Score label
+        // Top panel for score display
+        var topPanel = new Panel
+        {
+            Location = new Point(0, 0),
+            Size = new Size(1100, 50),
+            BackColor = Color.White,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+        };
+        this.Controls.Add(topPanel);
+        
+        // Score label with larger font
         scoreLabel = new Label
         {
-            Location = new Point(20, 10),
-            Size = new Size(200, 25),
-            Font = new Font("Arial", 12, FontStyle.Bold),
-            Text = "Score: 0",
+            Location = new Point(20, 12),
+            Size = new Size(700, 30),
+            Font = new Font("Arial", 14, FontStyle.Bold),
+            Text = "Moves: 0 | Time: 0s | Score: 0",
             Anchor = AnchorStyles.Top | AnchorStyles.Left
         };
-        this.Controls.Add(scoreLabel);
+        topPanel.Controls.Add(scoreLabel);
         
-        // Game panel
+        // Pause button
+        var pauseBtn = new Button
+        {
+            Text = "⏸ Pause",
+            Location = new Point(750, 10),
+            Size = new Size(100, 30),
+            Font = new Font("Arial", 11, FontStyle.Bold),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        topPanel.Controls.Add(pauseBtn);
+        
+        // Settings button
+        var settingsBtn = new Button
+        {
+            Text = "⚙ Settings",
+            Location = new Point(860, 10),
+            Size = new Size(110, 30),
+            Font = new Font("Arial", 11, FontStyle.Bold),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        settingsBtn.Click += ShowSettings;
+        topPanel.Controls.Add(settingsBtn);
+        
+        // Scoreboard button
+        var scoreboardBtn = new Button
+        {
+            Text = "📊 Scores",
+            Location = new Point(980, 10),
+            Size = new Size(110, 30),
+            Font = new Font("Arial", 11, FontStyle.Bold),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right
+        };
+        scoreboardBtn.Click += ShowScoreboard;
+        topPanel.Controls.Add(scoreboardBtn);
+        
+        // Game panel (green background)
         gamePanel = new Panel
         {
-            Location = new Point(10, 50),
-            Size = new Size(860, 600),
+            Location = new Point(0, 50),
+            Size = new Size(1100, 800),
             BackColor = Color.DarkGreen,
-            BorderStyle = BorderStyle.FixedSingle,
-            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right // Solitaire can expand in all directions
+            BorderStyle = BorderStyle.None,
+            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
         };
         gamePanel.Paint += GamePanel_Paint;
         gamePanel.MouseDown += GamePanel_MouseDown;
@@ -91,69 +151,154 @@ public partial class SpiderSolitaireForm : Form
             null, gamePanel, new object[] { true });
         this.Controls.Add(gamePanel);
         
-        // Settings button
-        var settingsBtn = new Button
+        // Buttons panel inside game panel (below score, above cards)
+        var buttonsPanel = new Panel
         {
-            Text = "Settings",
-            Location = new Point(250, 10),
-            Size = new Size(100, 30),
-            Anchor = AnchorStyles.Top | AnchorStyles.Left
+            Location = new Point(10, 10),
+            Size = new Size(1080, 50),
+            BackColor = Color.Transparent,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
-        settingsBtn.Click += ShowSettings;
-        this.Controls.Add(settingsBtn);
+        gamePanel.Controls.Add(buttonsPanel);
         
-        // Hint button
+        // Hint button with icon
         var hintBtn = new Button
         {
-            Text = "Hint",
-            Location = new Point(360, 10),
-            Size = new Size(100, 30),
-            Anchor = AnchorStyles.Top | AnchorStyles.Left
+            Location = new Point(10, 10),
+            Size = new Size(50, 40),
+            BackColor = Color.White,
+            FlatStyle = FlatStyle.Flat
         };
+        var hintIcon = AssetManager.LoadButtonImage("hint");
+        if (hintIcon != null)
+        {
+            hintBtn.Image = new Bitmap(hintIcon, new Size(35, 35));
+            hintIcon.Dispose();
+        }
+        else
+        {
+            hintBtn.Text = "💡";
+            hintBtn.Font = new Font("Arial", 16);
+        }
         hintBtn.Click += ShowHint;
-        this.Controls.Add(hintBtn);
+        buttonsPanel.Controls.Add(hintBtn);
         
-        // Undo button
+        // Undo button with icon
         var undoBtn = new Button
         {
-            Text = "Undo",
-            Location = new Point(470, 10),
-            Size = new Size(100, 30),
-            Anchor = AnchorStyles.Top | AnchorStyles.Left
+            Location = new Point(70, 10),
+            Size = new Size(50, 40),
+            BackColor = Color.White,
+            FlatStyle = FlatStyle.Flat
         };
+        var undoIcon = AssetManager.LoadButtonImage("undo");
+        if (undoIcon != null)
+        {
+            undoBtn.Image = new Bitmap(undoIcon, new Size(35, 35));
+            undoIcon.Dispose();
+        }
+        else
+        {
+            undoBtn.Text = "↶";
+            undoBtn.Font = new Font("Arial", 16);
+        }
         undoBtn.Click += UndoMove;
-        this.Controls.Add(undoBtn);
+        buttonsPanel.Controls.Add(undoBtn);
         
-        // New game button
-        var newGameBtn = new Button
+        // Restart button with icon
+        var restartBtn = new Button
         {
-            Text = "New Game",
-            Location = new Point(580, 10),
-            Size = new Size(100, 30),
-            Anchor = AnchorStyles.Top | AnchorStyles.Left
+            Location = new Point(130, 10),
+            Size = new Size(50, 40),
+            BackColor = Color.White,
+            FlatStyle = FlatStyle.Flat
         };
-        newGameBtn.Click += (s, e) => InitializeGame();
-        this.Controls.Add(newGameBtn);
+        var restartIcon = AssetManager.LoadButtonImage("restart");
+        if (restartIcon != null)
+        {
+            restartBtn.Image = new Bitmap(restartIcon, new Size(35, 35));
+            restartIcon.Dispose();
+        }
+        else
+        {
+            restartBtn.Text = "🔄";
+            restartBtn.Font = new Font("Arial", 16);
+        }
+        restartBtn.Click += (s, e) => InitializeGame();
+        buttonsPanel.Controls.Add(restartBtn);
         
-        // Scoreboard button
-        var scoreboardBtn = new Button
+        // Home button with icon
+        var homeBtn = new Button
         {
-            Text = "Scoreboard",
-            Location = new Point(690, 10),
-            Size = new Size(100, 30),
-            Anchor = AnchorStyles.Top | AnchorStyles.Left
+            Location = new Point(190, 10),
+            Size = new Size(50, 40),
+            BackColor = Color.White,
+            FlatStyle = FlatStyle.Flat
         };
-        scoreboardBtn.Click += ShowScoreboard;
-        this.Controls.Add(scoreboardBtn);
+        var homeIcon = AssetManager.LoadButtonImage("home");
+        if (homeIcon != null)
+        {
+            homeBtn.Image = new Bitmap(homeIcon, new Size(35, 35));
+            homeIcon.Dispose();
+        }
+        else
+        {
+            homeBtn.Text = "🏠";
+            homeBtn.Font = new Font("Arial", 16);
+        }
+        homeBtn.Click += (s, e) => this.Close();
+        buttonsPanel.Controls.Add(homeBtn);
+    }
+    
+    private void LoadCardImages()
+    {
+        try
+        {
+            // Load the card back image
+            cardBackImage = AssetManager.LoadCardBackImage();
+            System.Diagnostics.Debug.WriteLine("Card back image loaded successfully");
+            
+            // Load the background image
+            backgroundImage = AssetManager.LoadBackgroundImage();
+            if (backgroundImage != null)
+            {
+                System.Diagnostics.Debug.WriteLine("Background image loaded successfully");
+            }
+            
+            // Preload all card images for better performance
+            string[] suits = { "Spades", "Hearts", "Diamonds", "Clubs" };
+            foreach (var suit in suits)
+            {
+                for (int rank = 1; rank <= 13; rank++)
+                {
+                    string key = $"{suit}_{rank}";
+                    cardImageCache[key] = AssetManager.LoadCardImage(suit, rank);
+                }
+            }
+            System.Diagnostics.Debug.WriteLine("Card images loaded successfully");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to load card images: {ex.Message}");
+            // Will fall back to drawing cards programmatically
+        }
     }
     
     private void InitializeGame()
     {
+        // Load card images if not already loaded
+        if (cardImageCache.Count == 0)
+        {
+            LoadCardImages();
+        }
+        
         tableau.Clear();
         stock.Clear();
         foundation.Clear();
         undoStack.Clear();
         score = 0;
+        moves = 0;
+        startTime = DateTime.Now;
         
         // Create deck(s)
         var deck = new List<Card>();
@@ -213,20 +358,70 @@ public partial class SpiderSolitaireForm : Form
     {
         var g = e.Graphics;
         
+        // Draw background image if available
+        if (backgroundImage != null && gamePanel != null)
+        {
+            g.DrawImage(backgroundImage, 0, 0, gamePanel.Width, gamePanel.Height);
+        }
+        
+        // Layout: buttons at top, stock/foundation, then play area
+        int stockY = StockAreaY;
+        int tableauY = TableauAreaY;
+        
+        // Draw stock area with card back image
+        if (stock.Count > 0)
+        {
+            if (cardBackImage != null)
+            {
+                // Draw card back image for stock
+                g.DrawImage(cardBackImage, 10, stockY, CardWidth, CardHeight);
+                // Draw stock count on top
+                using (var font = new Font("Arial", 16, FontStyle.Bold))
+                using (var brush = new SolidBrush(Color.FromArgb(200, 255, 255, 255)))
+                using (var backgroundBrush = new SolidBrush(Color.FromArgb(150, 0, 0, 0)))
+                {
+                    string stockText = $"{stock.Count / CardsPerStockDeal}";
+                    var textSize = g.MeasureString(stockText, font);
+                    float textX = 10 + (CardWidth - textSize.Width) / 2;
+                    float textY = stockY + (CardHeight - textSize.Height) / 2;
+                    g.FillRectangle(backgroundBrush, textX - 5, textY - 2, textSize.Width + 10, textSize.Height + 4);
+                    g.DrawString(stockText, font, brush, textX, textY);
+                }
+            }
+            else
+            {
+                g.FillRectangle(Brushes.Gray, 10, stockY, CardWidth, CardHeight);
+                using (var font = new Font("Arial", 14, FontStyle.Bold))
+                {
+                    g.DrawString($"Stock\n{stock.Count}", font, Brushes.White, 15, stockY + 20);
+                }
+            }
+        }
+        
+        // Draw foundation (completed decks)
+        for (int i = 0; i < foundation.Count; i++)
+        {
+            int x = 200 + i * (CardWidth + FoundationSpacing);
+            g.FillRectangle(Brushes.DarkGray, x, stockY, CardWidth, CardHeight);
+            using (var font = new Font("Arial", 12, FontStyle.Bold))
+            {
+                g.DrawString($"Complete\n{i + 1}", font, Brushes.White, x + 5, stockY + 40);
+            }
+        }
+        
         // Draw tableau columns
         for (int col = 0; col < tableau.Count; col++)
         {
-            int x = col * (CardWidth + 5) + 10;
-            int y = 10;
+            int x = col * (CardWidth + CardSpacing) + 10;
             
             // Draw column placeholder
-            g.DrawRectangle(Pens.White, x, y, CardWidth, CardHeight);
+            g.DrawRectangle(Pens.White, x, tableauY, CardWidth, CardHeight);
             
             // Draw cards in column
             for (int i = 0; i < tableau[col].Count; i++)
             {
                 var card = tableau[col][i];
-                int cardY = y + i * CardOffset;
+                int cardY = tableauY + i * CardOffset;
                 
                 // Skip if this is the dragged card during dragging
                 if (draggedCard != null && isDragging && col == dragSourceColumn && i >= dragCardIndex)
@@ -258,26 +453,11 @@ public partial class SpiderSolitaireForm : Form
             }
         }
         
-        // Draw stock
-        if (stock.Count > 0)
-        {
-            g.FillRectangle(Brushes.Gray, 10, 500, CardWidth, CardHeight / 2);
-            g.DrawString($"Stock: {stock.Count}", new Font("Arial", 10), Brushes.White, 15, 510);
-        }
-        
-        // Draw foundation
-        for (int i = 0; i < foundation.Count; i++)
-        {
-            int x = 200 + i * (CardWidth + 5);
-            g.FillRectangle(Brushes.DarkGray, x, 500, CardWidth, CardHeight / 2);
-            g.DrawString($"Complete {i + 1}", new Font("Arial", 8), Brushes.White, x + 5, 510);
-        }
-        
         // Highlight hint target column
         if (hintTargetColumn >= 0 && (hintBlinkCount % 2 == 0))
         {
-            int x = hintTargetColumn * (CardWidth + 5) + 10;
-            int y = 10 + tableau[hintTargetColumn].Count * CardOffset;
+            int x = hintTargetColumn * (CardWidth + CardSpacing) + 10;
+            int y = tableauY + tableau[hintTargetColumn].Count * CardOffset;
             using (var pen = new Pen(Color.LimeGreen, 4))
             {
                 g.DrawRectangle(pen, x - 2, y - 2, CardWidth + 4, CardHeight + 4);
@@ -317,37 +497,56 @@ public partial class SpiderSolitaireForm : Form
     {
         if (!card.FaceUp)
         {
-            g.FillRectangle(Brushes.Blue, x, y, CardWidth, CardHeight);
-            g.DrawRectangle(Pens.White, x, y, CardWidth, CardHeight);
+            // Draw card back using PNG image if available
+            if (cardBackImage != null)
+            {
+                g.DrawImage(cardBackImage, x, y, CardWidth, CardHeight);
+            }
+            else
+            {
+                // Fallback to blue rectangle
+                g.FillRectangle(Brushes.Blue, x, y, CardWidth, CardHeight);
+                g.DrawRectangle(Pens.White, x, y, CardWidth, CardHeight);
+            }
         }
         else
         {
-            g.FillRectangle(Brushes.White, x, y, CardWidth, CardHeight);
-            g.DrawRectangle(Pens.Black, x, y, CardWidth, CardHeight);
-            
-            var color = card.Suit == "Hearts" || card.Suit == "Diamonds" ? Brushes.Red : Brushes.Black;
-            
-            string rankStr = card.Rank switch
+            // Draw card face using cached PNG image if available
+            string key = $"{card.Suit}_{card.Rank}";
+            if (cardImageCache.TryGetValue(key, out var cardImage))
             {
-                1 => "A",
-                11 => "J",
-                12 => "Q",
-                13 => "K",
-                _ => card.Rank.ToString()
-            };
-            
-            g.DrawString(rankStr, new Font("Arial", 16, FontStyle.Bold), color, x + 5, y + 5);
-            
-            string suitSymbol = card.Suit switch
+                g.DrawImage(cardImage, x, y, CardWidth, CardHeight);
+            }
+            else
             {
-                "Spades" => "♠",
-                "Hearts" => "♥",
-                "Diamonds" => "♦",
-                "Clubs" => "♣",
-                _ => ""
-            };
-            
-            g.DrawString(suitSymbol, new Font("Arial", 20), color, x + 30, y + 40);
+                // Fallback to programmatic drawing
+                g.FillRectangle(Brushes.White, x, y, CardWidth, CardHeight);
+                g.DrawRectangle(Pens.Black, x, y, CardWidth, CardHeight);
+                
+                var color = card.Suit == "Hearts" || card.Suit == "Diamonds" ? Brushes.Red : Brushes.Black;
+                
+                string rankStr = card.Rank switch
+                {
+                    1 => "A",
+                    11 => "J",
+                    12 => "Q",
+                    13 => "K",
+                    _ => card.Rank.ToString()
+                };
+                
+                g.DrawString(rankStr, new Font("Arial", 16, FontStyle.Bold), color, x + 5, y + 5);
+                
+                string suitSymbol = card.Suit switch
+                {
+                    "Spades" => "♠",
+                    "Hearts" => "♥",
+                    "Diamonds" => "♦",
+                    "Clubs" => "♣",
+                    _ => ""
+                };
+                
+                g.DrawString(suitSymbol, new Font("Arial", 20), color, x + 30, y + 40);
+            }
         }
     }
     
@@ -358,8 +557,11 @@ public partial class SpiderSolitaireForm : Form
         mouseDownPos = e.Location;
         isDragging = false;
         
+        int stockY = StockAreaY;
+        int tableauY = TableauAreaY;
+        
         // Check if clicking on stock
-        if (e.X >= 10 && e.X <= 10 + CardWidth && e.Y >= 500 && e.Y <= 500 + CardHeight / 2 && stock.Count > 0)
+        if (e.X >= 10 && e.X <= 10 + CardWidth && e.Y >= stockY && e.Y <= stockY + CardHeight && stock.Count > 0)
         {
             DealFromStock();
             return;
@@ -368,12 +570,11 @@ public partial class SpiderSolitaireForm : Form
         // Check if clicking on a card in tableau
         for (int col = 0; col < tableau.Count; col++)
         {
-            int x = col * (CardWidth + 5) + 10;
-            int y = 10;
+            int x = col * (CardWidth + CardSpacing) + 10;
             
             for (int i = tableau[col].Count - 1; i >= 0; i--)
             {
-                int cardY = y + i * CardOffset;
+                int cardY = tableauY + i * CardOffset;
                 
                 if (e.X >= x && e.X <= x + CardWidth && e.Y >= cardY && e.Y <= cardY + CardHeight)
                 {
@@ -445,7 +646,7 @@ public partial class SpiderSolitaireForm : Form
             // Find target column
             for (int col = 0; col < tableau.Count; col++)
             {
-                int x = col * (CardWidth + 5) + 10;
+                int x = col * (CardWidth + CardSpacing) + 10;
                 
                 if (e.X >= x && e.X <= x + CardWidth)
                 {
@@ -496,10 +697,11 @@ public partial class SpiderSolitaireForm : Form
             tableau[fromCol][tableau[fromCol].Count - 1].FaceUp = true;
         }
         
+        moves++; // Count each card move as a move
+        
         // Check for completed sequences
         CheckForCompletedSequences();
         
-        score += 5;
         UpdateScore();
     }
     
@@ -540,12 +742,14 @@ public partial class SpiderSolitaireForm : Form
     
     private void AnimateMoveCards(int fromCol, int cardIndex, int toCol)
     {
-        // Calculate start and end positions for animation
-        int startX = fromCol * (CardWidth + 5) + 10;
-        int startY = 10 + cardIndex * CardOffset;
+        int tableauY = TableauAreaY;
         
-        int endX = toCol * (CardWidth + 5) + 10;
-        int endY = 10 + tableau[toCol].Count * CardOffset;
+        // Calculate start and end positions for animation
+        int startX = fromCol * (CardWidth + CardSpacing) + 10;
+        int startY = tableauY + cardIndex * CardOffset;
+        
+        int endX = toCol * (CardWidth + CardSpacing) + 10;
+        int endY = tableauY + tableau[toCol].Count * CardOffset;
         
         animationStart = new Point(startX, startY);
         animationEnd = new Point(endX, endY);
@@ -645,7 +849,9 @@ public partial class SpiderSolitaireForm : Form
                     // Check win condition
                     if (foundation.Count == 8)
                     {
-                        MessageBox.Show($"Congratulations! You won with a score of {score}!", "Victory!");
+                        int elapsedSeconds = (int)(DateTime.Now - startTime).TotalSeconds;
+                        score = moves + elapsedSeconds;
+                        MessageBox.Show($"Congratulations! You won!\nMoves: {moves}\nTime: {elapsedSeconds}s\nFinal Score: {score}\n(Lower is better)", "Victory!");
                         var name = Microsoft.VisualBasic.Interaction.InputBox("Enter your name:", "High Score", "Player");
                         if (!string.IsNullOrWhiteSpace(name))
                         {
@@ -662,6 +868,7 @@ public partial class SpiderSolitaireForm : Form
         if (stock.Count < 10) return;
         
         SaveGameState();
+        moves++; // Count dealing from stock as a move
         
         for (int col = 0; col < 10; col++)
         {
@@ -692,7 +899,8 @@ public partial class SpiderSolitaireForm : Form
             Tableau = tableau.Select(col => col.Select(c => c.Clone()).ToList()).ToList(),
             Stock = stock.Select(c => c.Clone()).ToList(),
             Foundation = foundation.Select(seq => seq.Select(c => c.Clone()).ToList()).ToList(),
-            Score = score
+            Score = score,
+            Moves = moves
         };
         
         undoStack.Push(state);
@@ -711,6 +919,7 @@ public partial class SpiderSolitaireForm : Form
         stock = state.Stock;
         foundation = state.Foundation;
         score = state.Score;
+        moves = state.Moves;
         
         UpdateScore();
         gamePanel?.Invalidate();
@@ -806,7 +1015,9 @@ public partial class SpiderSolitaireForm : Form
     {
         if (scoreLabel != null)
         {
-            scoreLabel.Text = $"Score: {score} | Complete: {foundation.Count}/8";
+            int elapsedSeconds = (int)(DateTime.Now - startTime).TotalSeconds;
+            score = moves + elapsedSeconds; // Score = moves + seconds (lower is better)
+            scoreLabel.Text = $"Moves: {moves} | Time: {elapsedSeconds}s | Score: {score} | Complete: {foundation.Count}/8";
         }
     }
     
@@ -894,6 +1105,17 @@ public partial class SpiderSolitaireForm : Form
         animationTimer?.Dispose();
         hintTimer?.Stop();
         hintTimer?.Dispose();
+        
+        // Dispose cached card images to prevent memory leaks
+        foreach (var image in cardImageCache.Values)
+        {
+            image.Dispose();
+        }
+        cardImageCache.Clear();
+        
+        cardBackImage?.Dispose();
+        backgroundImage?.Dispose();
+        
         base.OnFormClosing(e);
     }
 }
@@ -916,4 +1138,5 @@ public class GameState
     public List<Card> Stock { get; set; } = new List<Card>();
     public List<List<Card>> Foundation { get; set; } = new List<List<Card>>();
     public int Score { get; set; }
+    public int Moves { get; set; }
 }

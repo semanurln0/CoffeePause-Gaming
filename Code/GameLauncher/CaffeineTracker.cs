@@ -5,14 +5,19 @@ namespace GameLauncher;
 public class CaffeineTracker
 {
     private readonly string _dataPath;
+    private readonly string _customDrinksPath;
     
     public CaffeineTracker()
     {
-        _dataPath = Path.Combine(
+        var appDataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "CoffeePause",
-            "caffeine_data.json"
+            "CoffeePause"
         );
+        // Ensure directory exists
+        Directory.CreateDirectory(appDataDir);
+        
+        _dataPath = Path.Combine(appDataDir, "caffeine_data.json");
+        _customDrinksPath = Path.Combine(appDataDir, "custom_drinks.json");
     }
     
     public List<CaffeineEntry> LoadEntries()
@@ -40,14 +45,35 @@ public class CaffeineTracker
         var sevenDaysAgo = DateTime.Now.AddDays(-7);
         entries = entries.Where(e => e.ConsumedAt >= sevenDaysAgo).ToList();
         
+        SaveAllEntries(entries);
+    }
+    
+    public void DeleteEntry(CaffeineEntry entry)
+    {
+        var entries = LoadEntries();
+        entries.RemoveAll(e => e.ConsumedAt == entry.ConsumedAt && 
+                              e.DrinkType == entry.DrinkType && 
+                              e.CaffeineAmount == entry.CaffeineAmount);
+        SaveAllEntries(entries);
+    }
+    
+    public void ResetAllEntries()
+    {
+        SaveAllEntries(new List<CaffeineEntry>());
+    }
+    
+    private void SaveAllEntries(List<CaffeineEntry> entries)
+    {
         try
         {
             var json = JsonSerializer.Serialize(entries, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(_dataPath, json);
         }
-        catch
+        catch (Exception ex)
         {
-            // Silently fail
+            // Log error for debugging
+            System.Diagnostics.Debug.WriteLine($"Error saving caffeine entries: {ex.Message}");
+            throw; // Re-throw to allow caller to handle
         }
     }
     
@@ -76,6 +102,39 @@ public class CaffeineTracker
         
         return totalCaffeine;
     }
+    
+    public Dictionary<string, double> LoadCustomDrinks()
+    {
+        if (!File.Exists(_customDrinksPath))
+            return new Dictionary<string, double>();
+            
+        try
+        {
+            var json = File.ReadAllText(_customDrinksPath);
+            return JsonSerializer.Deserialize<Dictionary<string, double>>(json) ?? new Dictionary<string, double>();
+        }
+        catch
+        {
+            return new Dictionary<string, double>();
+        }
+    }
+    
+    public void SaveCustomDrink(string drinkName, double caffeineContentPer100ml)
+    {
+        var customDrinks = LoadCustomDrinks();
+        customDrinks[drinkName] = caffeineContentPer100ml;
+        
+        try
+        {
+            var json = JsonSerializer.Serialize(customDrinks, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(_customDrinksPath, json);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error saving custom drink: {ex.Message}");
+            throw;
+        }
+    }
 }
 
 public class CaffeineEntry
@@ -85,6 +144,8 @@ public class CaffeineEntry
     public int Quantity { get; set; }
     public double CaffeineAmount { get; set; }
     public DateTime ConsumedAt { get; set; }
+    
+    public string DisplayText => $"{ConsumedAt:HH:mm} - {DrinkType} ({CaffeineAmount:F0}mg)";
 }
 
 public static class CaffeineData
