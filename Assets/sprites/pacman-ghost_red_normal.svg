@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Taller normal ghost (red) - body extended downward, mouth below eyes -->
+  <path d="M12 34
+           Q12 14, 32 12
+           Q52 14, 52 34
+           L52 48
+           C50 52, 48 54, 46 54
+           C44 54, 42 52, 40 54
+           C38 54, 36 52, 34 54
+           C32 54, 30 52, 28 54
+           C26 54, 24 52, 22 54
+           L12 48 Z"
+        fill="#E53935" stroke="#B71C1C" stroke-width="1"/>
+
+  <!-- eyes (higher on the head so mouth can sit below) -->
+  <g>
+    <ellipse cx="24" cy="24" rx="6.5" ry="8" fill="#FFFFFF"/>
+    <ellipse cx="40" cy="24" rx="6.5" ry="8" fill="#FFFFFF"/>
+    <!-- pupils centered (not overlapping mouth) -->
+    <circle cx="26" cy="26" r="3" fill="#000"/>
+    <circle cx="42" cy="26" r="3" fill="#000"/>
+  </g>
+
+  <!-- mouth positioned clearly below the eyes -->
+  <path d="M24 36 Q32 42, 40 36" stroke="#331212" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Strawberry -->
+  <!-- seeds -->
+  <g fill="#FEE08B">
+    <ellipse cx="34" cy="28" rx="1.6" ry="2.6" transform="rotate(-10 34 28)"/>
+    <ellipse cx="29" cy="32" rx="1.6" ry="2.6" transform="rotate(-20 29 32)"/>
+    <ellipse cx="38" cy="34" rx="1.6" ry="2.6" transform="rotate(10 38 34)"/>
+    <ellipse cx="30" cy="24" rx="1.6" ry="2.6" transform="rotate(-30 30 24)"/>
+    <ellipse cx="36" cy="22" rx="1.6" ry="2.6" transform="rotate(15 36 22)"/>
+  </g>
+
+  <!-- berry body -->
+  <path d="M32 12
+           C22 12, 14 22, 14 34
+           C14 45, 25 54, 32 54
+           C39 54, 50 45, 50 34
+           C50 22, 42 12, 32 12 Z"
+        fill="#E53935" stroke="#C62828" stroke-width="1"/>
+
+  <!-- leaves -->
+  <path d="M24 14 C22 10, 28 8, 30 12 C34 8, 40 10, 38 14 C44 12, 46 18, 40 18 C44 22, 36 20, 34 24 C30 20, 26 22, 28 18 C22 18, 22 14, 24 14 Z"
+        fill="#2E7D32" stroke="#1B5E20" stroke-width="0.8"/>
+</svg>

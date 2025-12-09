@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Taller vulnerable ghost (blue) - scared look, eyes slightly shifted, mouth below eyes -->
+  <path d="M12 34
+           Q12 14, 32 12
+           Q52 14, 52 34
+           L52 48
+           C50 52, 48 54, 46 54
+           C44 54, 42 52, 40 54
+           C38 54, 36 52, 34 54
+           C32 54, 30 52, 28 54
+           C26 54, 24 52, 22 54
+           L12 48 Z"
+        fill="#4FC3F7" stroke="#0288D1" stroke-width="1"/>
+
+  <!-- eyes (higher) -->
+  <g>
+    <ellipse cx="24" cy="24" rx="6.5" ry="8" fill="#FFFFFF"/>
+    <ellipse cx="40" cy="24" rx="6.5" ry="8" fill="#FFFFFF"/>
+    <!-- pupils shifted left to give 'scared/looking' feeling -->
+    <circle cx="22" cy="26" r="2.6" fill="#000"/>
+    <circle cx="38" cy="26" r="2.6" fill="#000"/>
+  </g>
+
+  <!-- frightened mouth / small frown under eyes -->
+  <path d="M26 36 Q32 30, 38 36" stroke="#012E40" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+</svg>

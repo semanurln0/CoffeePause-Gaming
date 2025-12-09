@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Pac-Man (facing right) -->
+  <defs>
+    <mask id="m">
+      <rect width="64" height="64" fill="white"/>
+      <!-- mouth cutout -->
+      <polygon points="32,32 58,18 58,46" fill="black"/>
+    </mask>
+  </defs>
+  <circle cx="32" cy="32" r="24" fill="#FFD500" mask="url(#m)"/>
+  <!-- eye -->
+  <circle cx="40" cy="22" r="3.5" fill="#000"/>
+</svg>
