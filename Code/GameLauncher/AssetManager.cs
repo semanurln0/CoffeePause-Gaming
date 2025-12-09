@@ -14,7 +14,7 @@ public static class AssetManager
             var svgPath = Path.Combine(AssetPath, fileName);
             if (!File.Exists(svgPath))
             {
-                // Return a placeholder image
+                // Return a placeholder image instead of throwing
                 var placeholder = new Bitmap(width, height);
                 using (var g = Graphics.FromImage(placeholder))
                 {
@@ -37,14 +37,9 @@ public static class AssetManager
             
             return bitmap;
         }
-        catch
+        catch (Exception ex)
         {
-            var errorBitmap = new Bitmap(width, height);
-            using (var g = Graphics.FromImage(errorBitmap))
-            {
-                g.Clear(Color.Red);
-            }
-            return errorBitmap;
+            throw new AssetLoadException(fileName, ex);
         }
     }
     
@@ -65,14 +60,9 @@ public static class AssetManager
             
             return Image.FromFile(imagePath);
         }
-        catch
+        catch (Exception ex)
         {
-            var errorBitmap = new Bitmap(100, 100);
-            using (var g = Graphics.FromImage(errorBitmap))
-            {
-                g.Clear(Color.Red);
-            }
-            return errorBitmap;
+            throw new AssetLoadException(fileName, ex);
         }
     }
     

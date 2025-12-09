@@ -7,17 +7,29 @@ public class CaffeineTracker
     private readonly string _dataPath;
     private readonly string _customDrinksPath;
     
+    // Events for caffeine tracking
+    public event EventHandler<CaffeineEntryEventArgs>? EntryAdded;
+    public event EventHandler<CaffeineEntryEventArgs>? EntryDeleted;
+    public event EventHandler? EntriesCleared;
+    
     public CaffeineTracker()
     {
-        var appDataDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "CoffeePause"
-        );
-        // Ensure directory exists
-        Directory.CreateDirectory(appDataDir);
-        
-        _dataPath = Path.Combine(appDataDir, "caffeine_data.json");
-        _customDrinksPath = Path.Combine(appDataDir, "custom_drinks.json");
+        try
+        {
+            var appDataDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "CoffeePause"
+            );
+            // Ensure directory exists
+            Directory.CreateDirectory(appDataDir);
+            
+            _dataPath = Path.Combine(appDataDir, "caffeine_data.json");
+            _customDrinksPath = Path.Combine(appDataDir, "custom_drinks.json");
+        }
+        catch (Exception ex)
+        {
+            throw new CaffeineDataException("Failed to initialize caffeine tracker", ex);
+        }
     }
     
     public List<CaffeineEntry> LoadEntries()
@@ -30,36 +42,68 @@ public class CaffeineTracker
             var json = File.ReadAllText(_dataPath);
             return JsonSerializer.Deserialize<List<CaffeineEntry>>(json) ?? new List<CaffeineEntry>();
         }
-        catch
+        catch (JsonException ex)
         {
-            return new List<CaffeineEntry>();
+            throw new CaffeineDataException("Failed to deserialize caffeine entries", ex);
+        }
+        catch (IOException ex)
+        {
+            throw new CaffeineDataException("Failed to read caffeine data file", ex);
+        }
+        catch (Exception ex)
+        {
+            throw new CaffeineDataException("Unexpected error loading caffeine entries", ex);
         }
     }
     
     public void SaveEntry(CaffeineEntry entry)
     {
-        var entries = LoadEntries();
-        entries.Add(entry);
-        
-        // Keep only entries from the last 7 days
-        var sevenDaysAgo = DateTime.Now.AddDays(-7);
-        entries = entries.Where(e => e.ConsumedAt >= sevenDaysAgo).ToList();
-        
-        SaveAllEntries(entries);
+        try
+        {
+            var entries = LoadEntries();
+            entries.Add(entry);
+            
+            // Keep only entries from the last 7 days
+            var sevenDaysAgo = DateTime.Now.AddDays(-7);
+            entries = entries.Where(e => e.ConsumedAt >= sevenDaysAgo).ToList();
+            
+            SaveAllEntries(entries);
+            OnEntryAdded(entry);
+        }
+        catch (Exception ex) when (ex is not CaffeineDataException)
+        {
+            throw new CaffeineDataException("Failed to save caffeine entry", ex);
+        }
     }
     
     public void DeleteEntry(CaffeineEntry entry)
     {
-        var entries = LoadEntries();
-        entries.RemoveAll(e => e.ConsumedAt == entry.ConsumedAt && 
-                              e.DrinkType == entry.DrinkType && 
-                              e.CaffeineAmount == entry.CaffeineAmount);
-        SaveAllEntries(entries);
+        try
+        {
+            var entries = LoadEntries();
+            entries.RemoveAll(e => e.ConsumedAt == entry.ConsumedAt && 
+                                  e.DrinkType == entry.DrinkType && 
+                                  e.CaffeineAmount == entry.CaffeineAmount);
+            SaveAllEntries(entries);
+            OnEntryDeleted(entry);
+        }
+        catch (Exception ex) when (ex is not CaffeineDataException)
+        {
+            throw new CaffeineDataException("Failed to delete caffeine entry", ex);
+        }
     }
     
     public void ResetAllEntries()
     {
-        SaveAllEntries(new List<CaffeineEntry>());
+        try
+        {
+            SaveAllEntries(new List<CaffeineEntry>());
+            OnEntriesCleared();
+        }
+        catch (Exception ex) when (ex is not CaffeineDataException)
+        {
+            throw new CaffeineDataException("Failed to reset caffeine entries", ex);
+        }
     }
     
     private void SaveAllEntries(List<CaffeineEntry> entries)
@@ -69,11 +113,17 @@ public class CaffeineTracker
             var json = JsonSerializer.Serialize(entries, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(_dataPath, json);
         }
+        catch (JsonException ex)
+        {
+            throw new CaffeineDataException("Failed to serialize caffeine entries", ex);
+        }
+        catch (IOException ex)
+        {
+            throw new CaffeineDataException("Failed to write caffeine data file", ex);
+        }
         catch (Exception ex)
         {
-            // Log error for debugging
-            System.Diagnostics.Debug.WriteLine($"Error saving caffeine entries: {ex.Message}");
-            throw; // Re-throw to allow caller to handle
+            throw new CaffeineDataException("Unexpected error saving caffeine entries", ex);
         }
     }
     
@@ -113,31 +163,65 @@ public class CaffeineTracker
             var json = File.ReadAllText(_customDrinksPath);
             return JsonSerializer.Deserialize<Dictionary<string, double>>(json) ?? new Dictionary<string, double>();
         }
-        catch
+        catch (JsonException ex)
         {
-            return new Dictionary<string, double>();
+            throw new CaffeineDataException("Failed to deserialize custom drinks", ex);
+        }
+        catch (IOException ex)
+        {
+            throw new CaffeineDataException("Failed to read custom drinks file", ex);
+        }
+        catch (Exception ex)
+        {
+            throw new CaffeineDataException("Unexpected error loading custom drinks", ex);
         }
     }
     
     public void SaveCustomDrink(string drinkName, double caffeineContentPer100ml)
     {
-        var customDrinks = LoadCustomDrinks();
-        customDrinks[drinkName] = caffeineContentPer100ml;
-        
         try
         {
+            var customDrinks = LoadCustomDrinks();
+            customDrinks[drinkName] = caffeineContentPer100ml;
+            
             var json = JsonSerializer.Serialize(customDrinks, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(_customDrinksPath, json);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not CaffeineDataException)
         {
-            System.Diagnostics.Debug.WriteLine($"Error saving custom drink: {ex.Message}");
-            throw;
+            throw new CaffeineDataException("Failed to save custom drink", ex);
         }
+    }
+    
+    // Event raising methods
+    protected virtual void OnEntryAdded(CaffeineEntry entry)
+    {
+        EntryAdded?.Invoke(this, new CaffeineEntryEventArgs(entry));
+    }
+    
+    protected virtual void OnEntryDeleted(CaffeineEntry entry)
+    {
+        EntryDeleted?.Invoke(this, new CaffeineEntryEventArgs(entry));
+    }
+    
+    protected virtual void OnEntriesCleared()
+    {
+        EntriesCleared?.Invoke(this, EventArgs.Empty);
     }
 }
 
-public class CaffeineEntry
+// Event arguments for caffeine entry events
+public class CaffeineEntryEventArgs : EventArgs
+{
+    public CaffeineEntry Entry { get; }
+    
+    public CaffeineEntryEventArgs(CaffeineEntry entry)
+    {
+        Entry = entry;
+    }
+}
+
+public class CaffeineEntry : ICloneable
 {
     public string DrinkType { get; set; } = "";
     public int SizeMl { get; set; }
@@ -146,6 +230,25 @@ public class CaffeineEntry
     public DateTime ConsumedAt { get; set; }
     
     public string DisplayText => $"{ConsumedAt:HH:mm} - {DrinkType} ({CaffeineAmount:F0}mg)";
+    
+    // ICloneable implementation
+    public object Clone()
+    {
+        return new CaffeineEntry
+        {
+            DrinkType = this.DrinkType,
+            SizeMl = this.SizeMl,
+            Quantity = this.Quantity,
+            CaffeineAmount = this.CaffeineAmount,
+            ConsumedAt = this.ConsumedAt
+        };
+    }
+    
+    // Typed clone method
+    public CaffeineEntry CloneTyped()
+    {
+        return (CaffeineEntry)Clone();
+    }
 }
 
 public static class CaffeineData

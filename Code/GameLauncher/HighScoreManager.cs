@@ -1,4 +1,5 @@
 using Newtonsoft.Json;
+using System.Collections;
 
 namespace GameLauncher;
 
@@ -48,10 +49,16 @@ public sealed class ScoreConfiguration
     private ScoreConfiguration() { }
 }
 
-public class HighScoreManager : ScoreManagerBase
+public class HighScoreManager : ScoreManagerBase, IEnumerable<ScoreEntry>
 {
     private readonly string _appDataPath;
     private static int _totalScoresSaved;
+    private readonly Dictionary<string, List<ScoreEntry>> _cachedScores = new Dictionary<string, List<ScoreEntry>>();
+    
+    // Events for score management
+    public event EventHandler<ScoreEventArgs>? ScoreSaved;
+    public event EventHandler<ScoreEventArgs>? ScoreValidationFailed;
+    public event EventHandler<HighScoreEventArgs>? NewHighScore;
     
     // Static constructor
     static HighScoreManager()
@@ -62,11 +69,18 @@ public class HighScoreManager : ScoreManagerBase
     
     public HighScoreManager()
     {
-        _appDataPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "CoffeePause"
-        );
-        Directory.CreateDirectory(_appDataPath);
+        try
+        {
+            _appDataPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "CoffeePause"
+            );
+            Directory.CreateDirectory(_appDataPath);
+        }
+        catch (Exception ex)
+        {
+            throw new GameException("Failed to initialize HighScoreManager storage", ex);
+        }
     }
     
     protected override string GetStoragePath()
@@ -77,6 +91,50 @@ public class HighScoreManager : ScoreManagerBase
     public override bool ValidateScore(int score)
     {
         return score >= ScoreConfiguration.Instance.MinValidScore;
+    }
+    
+    // IEnumerable implementation - iterates through all cached scores
+    public IEnumerator<ScoreEntry> GetEnumerator()
+    {
+        foreach (var gameScores in _cachedScores.Values)
+        {
+            foreach (var score in gameScores)
+            {
+                yield return score;
+            }
+        }
+    }
+    
+    IEnumerator IEnumerable.GetEnumerator()
+    {
+        return GetEnumerator();
+    }
+    
+    // Iterator method to get scores for a specific game
+    public IEnumerable<ScoreEntry> GetScoresForGame(string gameName)
+    {
+        if (_cachedScores.TryGetValue(gameName, out var scores))
+        {
+            foreach (var score in scores)
+            {
+                yield return score;
+            }
+        }
+    }
+    
+    // Iterator to get high scores across all games
+    public IEnumerable<ScoreEntry> GetTopScoresAcrossGames(int count)
+    {
+        var allScores = new List<ScoreEntry>();
+        foreach (var gameScores in _cachedScores.Values)
+        {
+            allScores.AddRange(gameScores);
+        }
+        
+        foreach (var score in allScores.OrderByDescending(s => s.Score).Take(count))
+        {
+            yield return score;
+        }
     }
     
     // Method with out parameter
@@ -117,40 +175,81 @@ public class HighScoreManager : ScoreManagerBase
                 scores = scores.OrderByDescending(s => s.Score).Take(maxCount).ToList();
             else
                 scores = scores.OrderBy(s => s.Score).Take(maxCount).ToList();
+            
+            // Cache the loaded scores
+            _cachedScores[gameName] = scores;
                 
             return scores;
         }
-        catch
+        catch (JsonException ex)
         {
-            return new List<ScoreEntry>();
+            throw new GameException($"Failed to deserialize scores for game '{gameName}'", ex);
+        }
+        catch (IOException ex)
+        {
+            throw new GameException($"Failed to read score file for game '{gameName}'", ex);
+        }
+        catch (Exception ex)
+        {
+            throw new GameException($"Unexpected error loading scores for game '{gameName}'", ex);
         }
     }
     
     public void SaveScore(string gameName, ScoreEntry entry)
     {
-        var scores = LoadScores(gameName);
-        scores.Add(entry);
-        scores = scores.OrderByDescending(s => s.Score).Take(ScoreConfiguration.Instance.MaxTopScores).ToList();
-        
-        var filePath = GetScoreFilePath(gameName);
-        var tempPath = filePath + ".tmp";
+        // Validate score before saving
+        if (!ValidateScore(entry.Score))
+        {
+            OnScoreValidationFailed(gameName, entry);
+            throw new ScoreValidationException(gameName, entry.Score);
+        }
         
         try
         {
-            var json = JsonConvert.SerializeObject(scores, Formatting.Indented);
-            File.WriteAllText(tempPath, json);
+            var scores = LoadScores(gameName);
+            bool isNewHighScore = scores.Count == 0 || entry.Score > scores[0].Score;
             
-            if (File.Exists(filePath))
-                File.Delete(filePath);
+            scores.Add(entry);
+            scores = scores.OrderByDescending(s => s.Score).Take(ScoreConfiguration.Instance.MaxTopScores).ToList();
             
-            File.Move(tempPath, filePath);
-            _totalScoresSaved++;
+            var filePath = GetScoreFilePath(gameName);
+            var tempPath = filePath + ".tmp";
+            
+            try
+            {
+                var json = JsonConvert.SerializeObject(scores, Formatting.Indented);
+                File.WriteAllText(tempPath, json);
+                
+                if (File.Exists(filePath))
+                    File.Delete(filePath);
+                
+                File.Move(tempPath, filePath);
+                _totalScoresSaved++;
+                
+                // Update cache
+                _cachedScores[gameName] = scores;
+                
+                // Raise events
+                OnScoreSaved(gameName, entry);
+                if (isNewHighScore)
+                {
+                    OnNewHighScore(gameName, entry);
+                }
+            }
+            catch (IOException ex)
+            {
+                if (File.Exists(tempPath))
+                    File.Delete(tempPath);
+                throw new GameException($"Failed to save score file for game '{gameName}'", ex);
+            }
         }
-        catch
+        catch (ScoreValidationException)
         {
-            if (File.Exists(tempPath))
-                File.Delete(tempPath);
-            throw;
+            throw; // Re-throw validation exceptions
+        }
+        catch (Exception ex)
+        {
+            throw new GameException($"Unexpected error saving score for game '{gameName}'", ex);
         }
     }
     
@@ -160,10 +259,50 @@ public class HighScoreManager : ScoreManagerBase
     }
     
     public static int GetTotalScoresSaved() => _totalScoresSaved;
+    
+    // Event raising methods
+    protected virtual void OnScoreSaved(string gameName, ScoreEntry entry)
+    {
+        ScoreSaved?.Invoke(this, new ScoreEventArgs(gameName, entry));
+    }
+    
+    protected virtual void OnScoreValidationFailed(string gameName, ScoreEntry entry)
+    {
+        ScoreValidationFailed?.Invoke(this, new ScoreEventArgs(gameName, entry));
+    }
+    
+    protected virtual void OnNewHighScore(string gameName, ScoreEntry entry)
+    {
+        NewHighScore?.Invoke(this, new HighScoreEventArgs(gameName, entry, entry.Score));
+    }
 }
 
-// ScoreEntry implementing IComparable, IEquatable, IFormattable, and custom interface
-public class ScoreEntry : IComparable<ScoreEntry>, IEquatable<ScoreEntry>, IFormattable, IGameStatistics
+// Event argument classes
+public class ScoreEventArgs : EventArgs
+{
+    public string GameName { get; }
+    public ScoreEntry Entry { get; }
+    
+    public ScoreEventArgs(string gameName, ScoreEntry entry)
+    {
+        GameName = gameName;
+        Entry = entry;
+    }
+}
+
+public class HighScoreEventArgs : ScoreEventArgs
+{
+    public int HighScore { get; }
+    
+    public HighScoreEventArgs(string gameName, ScoreEntry entry, int highScore) 
+        : base(gameName, entry)
+    {
+        HighScore = highScore;
+    }
+}
+
+// ScoreEntry implementing IComparable, IEquatable, IFormattable, ICloneable, and custom interface
+public class ScoreEntry : IComparable<ScoreEntry>, IEquatable<ScoreEntry>, IFormattable, IGameStatistics, ICloneable
 {
     public string PlayerName { get; set; } = "Player";
     public int Score { get; set; }
@@ -268,5 +407,22 @@ public class ScoreEntry : IComparable<ScoreEntry>, IEquatable<ScoreEntry>, IForm
             Score = entry.Score + bonus, 
             Date = entry.Date 
         };
+    }
+    
+    // ICloneable implementation
+    public object Clone()
+    {
+        return new ScoreEntry
+        {
+            PlayerName = this.PlayerName,
+            Score = this.Score,
+            Date = this.Date
+        };
+    }
+    
+    // Typed clone method
+    public ScoreEntry CloneTyped()
+    {
+        return (ScoreEntry)Clone();
     }
 }

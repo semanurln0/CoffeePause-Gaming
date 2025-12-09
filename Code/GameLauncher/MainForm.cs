@@ -2,18 +2,28 @@ namespace GameLauncher;
 
 public partial class MainForm : Form
 {
-    private const int InitialWidth = 1100; // Increased width for caffeine panel
+    private const int InitialWidth = 1100;
     private const int InitialHeight = 600;
-    private const int CaffeinePanelWidth = 280;
-    private const int CaffeinePanelRightMargin = 20;
-    private const int CaffeinePanelHeight = 520;
-    private const int CaffeinePanelTopMargin = 40;
-    private const int CaffeinePanelMinHeight = 400; // Minimum height to keep panel usable
+    
+    // Percentage-based layout constants
+    private const double CaffeinePanelWidthPercent = 0.255; // ~280px at 1100px width
+    private const double CaffeinePanelRightMarginPercent = 0.018; // ~20px
+    private const double CaffeinePanelTopMarginPercent = 0.067; // ~40px
+    
+    // Game panel percentage constants
+    private const double GamesPanelWidthPercent = 0.45; // ~500px at 1100px
+    private const double GamesPanelHeightPercent = 0.58; // ~350px at 600px
+    
     private CaffeineTracker caffeineTracker = new CaffeineTracker();
     private Label? caffeineStatusLabel;
     private Panel? caffeinePanel;
     private ListBox? caffeineHistoryList;
     private DateTimePicker? sleepTimePicker;
+    private Panel? mainPanel;
+    private TableLayoutPanel? gamesPanel;
+    private PictureBox? logoPictureBox;
+    private Label? titleLabel;
+    private Label? subtitleLabel;
     
     public MainForm()
     {
@@ -64,7 +74,7 @@ public partial class MainForm : Form
         this.Controls.Add(menuStrip);
         
         // Create main panel
-        var mainPanel = new Panel
+        mainPanel = new Panel
         {
             Dock = DockStyle.Fill,
             BackColor = Color.FromArgb(245, 245, 245),
@@ -92,7 +102,7 @@ public partial class MainForm : Form
         var logoImage = AssetManager.LoadSvgAsImage("project-logo.svg", 64, 64);
         if (logoImage != null)
         {
-            var logoPictureBox = new PictureBox
+            logoPictureBox = new PictureBox
             {
                 Image = logoImage,
                 SizeMode = PictureBoxSizeMode.Zoom,
@@ -103,34 +113,34 @@ public partial class MainForm : Form
             mainPanel.Controls.Add(logoPictureBox);
         }
         
-        var titleLabel = new Label
+        titleLabel = new Label
         {
             Text = "CoffeePause",
             Font = new Font("Segoe UI", 28, FontStyle.Bold),
             ForeColor = Color.FromArgb(74, 166, 186),
             AutoSize = true,
-            Location = new Point(formCenterX - 80, 50),
+            Location = new Point(formCenterX - 80, 40),
             BackColor = Color.Transparent
         };
         mainPanel.Controls.Add(titleLabel);
         
         // Subtitle
-        var subtitleLabel = new Label
+        subtitleLabel = new Label
         {
             Text = "Choose Game",
             Font = new Font("Segoe UI", 12),
             ForeColor = Color.Gray,
             AutoSize = true,
-            Location = new Point(formCenterX - 50, 100),
+            Location = new Point(formCenterX - 50, 90),
             BackColor = Color.Transparent
         };
         mainPanel.Controls.Add(subtitleLabel);
         
         // Game buttons panel
-        var gamesPanel = new TableLayoutPanel
+        gamesPanel = new TableLayoutPanel
         {
             Name = "gamesPanel",
-            Location = new Point((InitialWidth - 500) / 2, 150),
+            Location = new Point((InitialWidth - 500) / 2, 140),
             Size = new Size(500, 350),
             ColumnCount = 2,
             RowCount = 2,
@@ -182,19 +192,23 @@ public partial class MainForm : Form
     
     private Panel CreateCaffeineTrackerPanel()
     {
-        // Calculate position from the right edge of the client area
-        // Since we set ClientSize explicitly in InitializeComponent, it should be available
+        // Calculate position from the right edge of the client area using percentages
         int clientWidth = this.ClientSize.Width;
-        int xPosition = clientWidth - CaffeinePanelWidth - CaffeinePanelRightMargin;
+        int clientHeight = this.ClientSize.Height;
+        int panelWidth = (int)(clientWidth * CaffeinePanelWidthPercent);
+        int panelHeight = (int)(clientHeight - (clientHeight * CaffeinePanelTopMarginPercent * 2));
+        int rightMargin = (int)(clientWidth * CaffeinePanelRightMarginPercent);
+        int topMargin = (int)(clientHeight * CaffeinePanelTopMarginPercent);
+        int xPosition = clientWidth - panelWidth - rightMargin;
         
         var panel = new Panel
         {
             Name = "caffeinePanel",
-            Location = new Point(xPosition, CaffeinePanelTopMargin),
-            Size = new Size(CaffeinePanelWidth, CaffeinePanelHeight),
+            Location = new Point(xPosition, topMargin),
+            Size = new Size(panelWidth, Math.Max(400, panelHeight)),
             BackColor = Color.FromArgb(240, 248, 255),
             BorderStyle = BorderStyle.FixedSingle
-            // Removed conflicting Anchor property - using absolute positioning instead
+            // Using absolute positioning with percentage-based calculations
         };
         
         // Title
@@ -250,12 +264,28 @@ public partial class MainForm : Form
         addCustomBtn.Click += (s, e) => ShowAddCustomDrinkDialog(drinkCombo, customDrinks);
         panel.Controls.Add(addCustomBtn);
         
+        // Manage Custom Drinks button
+        var manageCustomBtn = new Button
+        {
+            Text = "✎",
+            Location = new Point(143, 65),
+            Size = new Size(20, 22),
+            BackColor = Color.FromArgb(74, 166, 186),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 9, FontStyle.Bold),
+            Cursor = Cursors.Hand
+        };
+        manageCustomBtn.FlatAppearance.BorderSize = 0;
+        manageCustomBtn.Click += (s, e) => ShowManageCustomDrinksDialog(drinkCombo, customDrinks);
+        panel.Controls.Add(manageCustomBtn);
+        
         // Size
         var sizeLabel = new Label
         {
             Text = "Size (ml):",
-            Location = new Point(145, 45),
-            Size = new Size(125, 18),
+            Location = new Point(168, 45),
+            Size = new Size(102, 18),
             Font = new Font("Segoe UI", 8)
         };
         panel.Controls.Add(sizeLabel);
@@ -648,6 +678,284 @@ public partial class MainForm : Form
         dialog.ShowDialog(this);
     }
     
+    private string? ExtractDrinkNameFromListItem(string listItem)
+    {
+        if (string.IsNullOrEmpty(listItem))
+            return null;
+            
+        int indexOfParen = listItem.IndexOf(" (");
+        if (indexOfParen < 0)
+            return null;
+            
+        return listItem.Substring(0, indexOfParen);
+    }
+    
+    private void ShowManageCustomDrinksDialog(ComboBox drinkCombo, Dictionary<string, double> customDrinks)
+    {
+        var dialog = new Form
+        {
+            Text = "Manage Custom Drinks",
+            Size = new Size(450, 400),
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.Sizable,
+            MaximizeBox = false,
+            MinimizeBox = false
+        };
+        
+        // List of custom drinks
+        var drinksList = new ListBox
+        {
+            Location = new Point(20, 20),
+            Size = new Size(400, 250),
+            Font = new Font("Segoe UI", 10)
+        };
+        
+        // Populate the list
+        void RefreshList()
+        {
+            drinksList.Items.Clear();
+            foreach (var drink in customDrinks)
+            {
+                drinksList.Items.Add($"{drink.Key} ({drink.Value} mg/100ml)");
+            }
+        }
+        RefreshList();
+        
+        dialog.Controls.Add(drinksList);
+        
+        // Edit button
+        var editButton = new Button
+        {
+            Text = "Edit Selected",
+            Location = new Point(20, 280),
+            Size = new Size(120, 35),
+            BackColor = Color.FromArgb(74, 166, 186),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 9, FontStyle.Bold),
+            Cursor = Cursors.Hand
+        };
+        editButton.FlatAppearance.BorderSize = 0;
+        editButton.Click += (s, e) =>
+        {
+            if (drinksList.SelectedItem == null)
+            {
+                MessageBox.Show("Please select a drink to edit.", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            
+            var selected = drinksList.SelectedItem.ToString() ?? "";
+            var drinkName = ExtractDrinkNameFromListItem(selected);
+            
+            if (drinkName == null || !customDrinks.ContainsKey(drinkName))
+            {
+                MessageBox.Show("Invalid drink selection.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+            
+            var currentValue = customDrinks[drinkName];
+            
+            // Show edit dialog
+            var editDialog = new Form
+            {
+                Text = "Edit Custom Drink",
+                Size = new Size(350, 200),
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false,
+                MinimizeBox = false
+            };
+            
+            var nameLabel = new Label
+            {
+                Text = "Drink Name:",
+                Location = new Point(20, 20),
+                Size = new Size(100, 20),
+                Font = new Font("Segoe UI", 9)
+            };
+            editDialog.Controls.Add(nameLabel);
+            
+            var nameInput = new TextBox
+            {
+                Location = new Point(130, 18),
+                Size = new Size(180, 22),
+                Text = drinkName,
+                Font = new Font("Segoe UI", 9)
+            };
+            editDialog.Controls.Add(nameInput);
+            
+            var caffeineLabel = new Label
+            {
+                Text = "Caffeine (mg per 100ml):",
+                Location = new Point(20, 60),
+                Size = new Size(150, 20),
+                Font = new Font("Segoe UI", 9)
+            };
+            editDialog.Controls.Add(caffeineLabel);
+            
+            var caffeineInput = new NumericUpDown
+            {
+                Location = new Point(180, 58),
+                Size = new Size(130, 22),
+                Minimum = 0,
+                Maximum = 500,
+                Value = (decimal)currentValue,
+                DecimalPlaces = 1,
+                Font = new Font("Segoe UI", 9)
+            };
+            editDialog.Controls.Add(caffeineInput);
+            
+            var updateButton = new Button
+            {
+                Text = "Update",
+                Location = new Point(100, 110),
+                Size = new Size(100, 30),
+                BackColor = Color.FromArgb(74, 166, 186),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 9, FontStyle.Bold)
+            };
+            updateButton.FlatAppearance.BorderSize = 0;
+            updateButton.Click += (s2, e2) =>
+            {
+                var newName = nameInput.Text.Trim();
+                if (string.IsNullOrWhiteSpace(newName))
+                {
+                    MessageBox.Show("Please enter a drink name.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                
+                try
+                {
+                    double newValue = (double)caffeineInput.Value;
+                    
+                    // Remove old entry if name changed
+                    if (newName != drinkName)
+                    {
+                        customDrinks.Remove(drinkName);
+                        drinkCombo.Items.Remove(drinkName);
+                    }
+                    
+                    caffeineTracker.SaveCustomDrink(newName, newValue);
+                    customDrinks[newName] = newValue;
+                    
+                    // Update combo box
+                    if (!drinkCombo.Items.Contains(newName))
+                    {
+                        drinkCombo.Items.Add(newName);
+                    }
+                    
+                    RefreshList();
+                    MessageBox.Show($"Custom drink '{newName}' updated!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    editDialog.Close();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to update custom drink: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+            editDialog.Controls.Add(updateButton);
+            
+            var cancelBtn = new Button
+            {
+                Text = "Cancel",
+                Location = new Point(210, 110),
+                Size = new Size(100, 30),
+                BackColor = Color.Gray,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 9)
+            };
+            cancelBtn.FlatAppearance.BorderSize = 0;
+            cancelBtn.Click += (s2, e2) => editDialog.Close();
+            editDialog.Controls.Add(cancelBtn);
+            
+            editDialog.ShowDialog(dialog);
+        };
+        dialog.Controls.Add(editButton);
+        
+        // Delete button
+        var deleteButton = new Button
+        {
+            Text = "Delete Selected",
+            Location = new Point(150, 280),
+            Size = new Size(120, 35),
+            BackColor = Color.FromArgb(220, 50, 50),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 9, FontStyle.Bold),
+            Cursor = Cursors.Hand
+        };
+        deleteButton.FlatAppearance.BorderSize = 0;
+        deleteButton.Click += (s, e) =>
+        {
+            if (drinksList.SelectedItem == null)
+            {
+                MessageBox.Show("Please select a drink to delete.", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            
+            var selected = drinksList.SelectedItem.ToString() ?? "";
+            var drinkName = ExtractDrinkNameFromListItem(selected);
+            
+            if (drinkName == null)
+            {
+                MessageBox.Show("Invalid drink selection.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+            
+            var result = MessageBox.Show($"Are you sure you want to delete '{drinkName}'?", 
+                "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            
+            if (result == DialogResult.Yes)
+            {
+                try
+                {
+                    // Remove from memory
+                    customDrinks.Remove(drinkName);
+                    drinkCombo.Items.Remove(drinkName);
+                    
+                    // Load all custom drinks from file and remove this one
+                    var allCustomDrinks = caffeineTracker.LoadCustomDrinks();
+                    allCustomDrinks.Remove(drinkName);
+                    
+                    // Save all remaining drinks back to file
+                    // (This overwrites the file with all remaining drinks)
+                    foreach (var drink in allCustomDrinks)
+                    {
+                        caffeineTracker.SaveCustomDrink(drink.Key, drink.Value);
+                    }
+                    
+                    RefreshList();
+                    MessageBox.Show($"Custom drink '{drinkName}' deleted!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to delete custom drink: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        };
+        dialog.Controls.Add(deleteButton);
+        
+        // Close button
+        var closeButton = new Button
+        {
+            Text = "Close",
+            Location = new Point(280, 280),
+            Size = new Size(120, 35),
+            BackColor = Color.Gray,
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 9, FontStyle.Bold),
+            Cursor = Cursors.Hand
+        };
+        closeButton.FlatAppearance.BorderSize = 0;
+        closeButton.Click += (s, e) => dialog.Close();
+        dialog.Controls.Add(closeButton);
+        
+        dialog.ShowDialog(this);
+    }
+    
     private Button CreateGameButton(string gameName, Color color)
     {
         var button = new Button
@@ -713,115 +1021,77 @@ public partial class MainForm : Form
     
     private void MainForm_Resize(object? sender, EventArgs e)
     {
-        // Calculate scale factors
-        float scaleX = (float)this.ClientSize.Width / InitialWidth;
-        float scaleY = (float)this.ClientSize.Height / InitialHeight;
-        float scale = Math.Min(scaleX, scaleY); // Use uniform scaling
+        if (mainPanel == null) return;
         
-        // Find the main panel and games panel
-        Panel? mainPanel = null;
-        TableLayoutPanel? gamesPanel = null;
-        PictureBox? logoPictureBox = null;
-        Label? titleLabel = null;
-        Label? subtitleLabel = null;
+        int clientWidth = this.ClientSize.Width;
+        int clientHeight = this.ClientSize.Height;
         
-        foreach (Control control in this.Controls)
+        // Update caffeine panel size and position using percentages
+        if (caffeinePanel != null)
         {
-            if (control is Panel panel && panel.BackgroundImage != null)
+            int panelWidth = (int)(clientWidth * CaffeinePanelWidthPercent);
+            int panelHeight = clientHeight - (int)(clientHeight * CaffeinePanelTopMarginPercent * 2);
+            int rightMargin = (int)(clientWidth * CaffeinePanelRightMarginPercent);
+            int topMargin = (int)(clientHeight * CaffeinePanelTopMarginPercent);
+            
+            caffeinePanel.Size = new Size(panelWidth, Math.Max(400, panelHeight));
+            caffeinePanel.Location = new Point(clientWidth - panelWidth - rightMargin, topMargin);
+        }
+        
+        // Update games panel size and position using percentages
+        if (gamesPanel != null)
+        {
+            int panelWidth = (int)(clientWidth * GamesPanelWidthPercent);
+            int panelHeight = (int)(clientHeight * GamesPanelHeightPercent);
+            
+            // Center the games panel in available space (excluding caffeine panel)
+            int availableWidth = caffeinePanel != null ? 
+                clientWidth - caffeinePanel.Width - (int)(clientWidth * CaffeinePanelRightMarginPercent) - 40 : 
+                clientWidth - 40;
+            
+            int centerX = (availableWidth - panelWidth) / 2;
+            int centerY = (int)(clientHeight * 0.30); // 30% from top
+            
+            gamesPanel.Size = new Size(panelWidth, panelHeight);
+            gamesPanel.Location = new Point(Math.Max(20, centerX), Math.Max(140, centerY));
+            
+            // Scale button fonts based on panel size
+            float fontScale = Math.Min((float)panelWidth / 500, (float)panelHeight / 350);
+            fontScale = Math.Max(0.7f, Math.Min(1.3f, fontScale)); // Clamp between 0.7 and 1.3
+            
+            foreach (Control ctrl in gamesPanel.Controls)
             {
-                mainPanel = panel;
-                break;
+                if (ctrl is Button btn)
+                {
+                    btn.Font = new Font("Segoe UI", 14 * fontScale, FontStyle.Bold);
+                }
             }
         }
         
-        if (mainPanel != null)
+        // Update logo position (percentage-based)
+        if (logoPictureBox != null)
         {
-            foreach (Control control in mainPanel.Controls)
-            {
-                if (control.Name == "gamesPanel" || control is TableLayoutPanel)
-                {
-                    gamesPanel = control as TableLayoutPanel;
-                }
-                else if (control is PictureBox)
-                {
-                    logoPictureBox = control as PictureBox;
-                }
-                else if (control is Label label)
-                {
-                    if (label.Text == "CoffeePause")
-                    {
-                        titleLabel = label;
-                    }
-                    else if (label.Text == "Choose Game")
-                    {
-                        subtitleLabel = label;
-                    }
-                }
-            }
-            
-            // Scale and center the games panel
-            if (gamesPanel != null)
-            {
-                int scaledWidth = (int)(500 * scale);
-                int scaledHeight = (int)(350 * scale);
-                gamesPanel.Size = new Size(scaledWidth, scaledHeight);
-                
-                int centerX = (this.ClientSize.Width - scaledWidth) / 2;
-                int centerY = (int)((this.ClientSize.Height - scaledHeight) / 2 + 20 * scale);
-                gamesPanel.Location = new Point(Math.Max(10, centerX), Math.Max((int)(150 * scale), centerY));
-                
-                // Scale button fonts
-                foreach (Control ctrl in gamesPanel.Controls)
-                {
-                    if (ctrl is Button btn)
-                    {
-                        btn.Font = new Font("Segoe UI", 16 * scale, FontStyle.Bold);
-                    }
-                }
-            }
-            
-            // Scale and reposition title elements based on new center
-            int formCenterX = this.ClientSize.Width / 2;
-            
-            if (logoPictureBox != null)
-            {
-                int logoSize = (int)(64 * scale);
-                logoPictureBox.Size = new Size(logoSize, logoSize);
-                logoPictureBox.Location = new Point((int)(formCenterX - 150 * scale), (int)(40 * scale));
-            }
-            
-            if (titleLabel != null)
-            {
-                titleLabel.Font = new Font("Segoe UI", 28 * scale, FontStyle.Bold);
-                // Recalculate position after font change
-                titleLabel.Location = new Point((int)(formCenterX - 80 * scale), (int)(50 * scale));
-            }
-            
-            if (subtitleLabel != null)
-            {
-                subtitleLabel.Font = new Font("Segoe UI", 12 * scale);
-                subtitleLabel.Location = new Point((int)(formCenterX - subtitleLabel.Width / 2), (int)(100 * scale));
-            }
-            
-            // Reposition and scale caffeine panel to stay on the right side
-            if (caffeinePanel != null)
-            {
-                // Calculate new position to keep panel on right side with proper margin
-                int newXPosition = this.ClientSize.Width - CaffeinePanelWidth - CaffeinePanelRightMargin;
-                
-                // Scale the panel height to fit the window, but maintain a minimum size
-                int scaledHeight = (int)(CaffeinePanelHeight * scaleY);
-                int maxAllowedHeight = this.ClientSize.Height - (int)(CaffeinePanelTopMargin * 2);
-                scaledHeight = Math.Max(CaffeinePanelMinHeight, Math.Min(scaledHeight, maxAllowedHeight));
-                
-                caffeinePanel.Location = new Point(newXPosition, (int)(CaffeinePanelTopMargin * scaleY));
-                caffeinePanel.Size = new Size(CaffeinePanelWidth, scaledHeight);
-                
-                // Ensure panel stays visible and on top
-                caffeinePanel.BringToFront();
-                
-                System.Diagnostics.Debug.WriteLine($"Caffeine panel resized to: {caffeinePanel.Location}, {caffeinePanel.Size}");
-            }
+            int logoSize = Math.Max(40, Math.Min(80, (int)(clientHeight * 0.1))); // 10% of height, clamped
+            logoPictureBox.Size = new Size(logoSize, logoSize);
+            logoPictureBox.Location = new Point((int)(clientWidth * 0.35) - logoSize - 10, (int)(clientHeight * 0.05));
         }
+        
+        // Update title label position
+        if (titleLabel != null)
+        {
+            float titleFontSize = Math.Max(18, Math.Min(32, clientHeight / 20f));
+            titleLabel.Font = new Font("Segoe UI", titleFontSize, FontStyle.Bold);
+            titleLabel.Location = new Point((int)(clientWidth * 0.35), (int)(clientHeight * 0.05));
+        }
+        
+        // Update subtitle label position
+        if (subtitleLabel != null)
+        {
+            float subtitleFontSize = Math.Max(9, Math.Min(14, clientHeight / 45f));
+            subtitleLabel.Font = new Font("Segoe UI", subtitleFontSize);
+            subtitleLabel.Location = new Point((int)(clientWidth * 0.35), (int)(clientHeight * 0.12));
+        }
+        
+        mainPanel.Invalidate();
     }
 }

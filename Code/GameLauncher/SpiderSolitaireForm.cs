@@ -32,7 +32,7 @@ public partial class SpiderSolitaireForm : Form
     private Point animationStart;
     private Point animationEnd;
     private int animationFrame = 0;
-    private const int AnimationFrames = 4; // Faster animation (was 8)
+    private const int AnimationFrames = 12; // Smooth animation with more frames (was 2)
     private int animationTargetColumn = -1;
     private int animationSourceColumn = -1;
     private int animationSourceCardIndex = -1;
@@ -45,12 +45,20 @@ public partial class SpiderSolitaireForm : Form
     private int hintBlinkCount = 0;
     private const int HintBlinkTotal = 6; // 3 blinks (on/off cycles)
     
+    // Time update timer for continuous display
+    private System.Windows.Forms.Timer? timeUpdateTimer;
+    private int lastDisplayedSeconds = -1; // Track last displayed time to avoid unnecessary updates
+    
     private int suitCount = 1; // 1, 2, or 4 suits
     private int score = 0;
     private int moves = 0;
     private DateTime startTime;
+    private TimeSpan pausedDuration = TimeSpan.Zero; // Track total paused time
+    private DateTime pauseStartTime; // Track when pause started
+    private bool isPaused = false;
     private Panel? gamePanel;
     private Label? scoreLabel;
+    private Label? pauseLabel;
     private HighScoreManager scoreManager = new HighScoreManager();
     
     // Card image caching
@@ -89,9 +97,9 @@ public partial class SpiderSolitaireForm : Form
         // Score label with larger font
         scoreLabel = new Label
         {
-            Location = new Point(20, 12),
-            Size = new Size(700, 30),
-            Font = new Font("Arial", 14, FontStyle.Bold),
+            Location = new Point(20, 8),
+            Size = new Size(700, 35),
+            Font = new Font("Arial", 16, FontStyle.Bold),
             Text = "Moves: 0 | Time: 0s | Score: 0",
             Anchor = AnchorStyles.Top | AnchorStyles.Left
         };
@@ -103,7 +111,7 @@ public partial class SpiderSolitaireForm : Form
             Text = "⏸ Pause",
             Location = new Point(750, 10),
             Size = new Size(100, 30),
-            Font = new Font("Arial", 11, FontStyle.Bold),
+            Font = new Font("Arial", 12, FontStyle.Bold),
             Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
         topPanel.Controls.Add(pauseBtn);
@@ -114,7 +122,7 @@ public partial class SpiderSolitaireForm : Form
             Text = "⚙ Settings",
             Location = new Point(860, 10),
             Size = new Size(110, 30),
-            Font = new Font("Arial", 11, FontStyle.Bold),
+            Font = new Font("Arial", 12, FontStyle.Bold),
             Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
         settingsBtn.Click += ShowSettings;
@@ -126,7 +134,7 @@ public partial class SpiderSolitaireForm : Form
             Text = "📊 Scores",
             Location = new Point(980, 10),
             Size = new Size(110, 30),
-            Font = new Font("Arial", 11, FontStyle.Bold),
+            Font = new Font("Arial", 12, FontStyle.Bold),
             Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
         scoreboardBtn.Click += ShowScoreboard;
@@ -248,6 +256,22 @@ public partial class SpiderSolitaireForm : Form
         }
         homeBtn.Click += (s, e) => this.Close();
         buttonsPanel.Controls.Add(homeBtn);
+        
+        // Pause label (centered on game panel)
+        pauseLabel = new Label
+        {
+            Text = "PAUSED\nPress P to Resume",
+            Font = new Font("Arial", 32, FontStyle.Bold),
+            ForeColor = Color.Yellow,
+            BackColor = Color.FromArgb(180, 0, 0, 0), // Semi-transparent black
+            TextAlign = ContentAlignment.MiddleCenter,
+            AutoSize = false,
+            Size = new Size(400, 120),
+            Visible = false,
+            Anchor = AnchorStyles.None
+        };
+        gamePanel.Controls.Add(pauseLabel);
+        pauseLabel.BringToFront();
     }
     
     private void LoadCardImages()
@@ -299,6 +323,19 @@ public partial class SpiderSolitaireForm : Form
         score = 0;
         moves = 0;
         startTime = DateTime.Now;
+        pausedDuration = TimeSpan.Zero; // Reset paused time
+        isPaused = false;
+        if (pauseLabel != null) pauseLabel.Visible = false;
+        lastDisplayedSeconds = -1; // Reset time tracking
+        
+        // Start/restart continuous time update timer
+        if (timeUpdateTimer == null)
+        {
+            timeUpdateTimer = new System.Windows.Forms.Timer();
+            timeUpdateTimer.Interval = 100; // Check every 100ms but only update UI when seconds change
+            timeUpdateTimer.Tick += TimeUpdateTimer_Tick;
+        }
+        timeUpdateTimer.Start();
         
         // Create deck(s)
         var deck = new List<Card>();
@@ -376,7 +413,7 @@ public partial class SpiderSolitaireForm : Form
                 // Draw card back image for stock
                 g.DrawImage(cardBackImage, 10, stockY, CardWidth, CardHeight);
                 // Draw stock count on top
-                using (var font = new Font("Arial", 16, FontStyle.Bold))
+                using (var font = new Font("Arial", 20, FontStyle.Bold))
                 using (var brush = new SolidBrush(Color.FromArgb(200, 255, 255, 255)))
                 using (var backgroundBrush = new SolidBrush(Color.FromArgb(150, 0, 0, 0)))
                 {
@@ -391,7 +428,7 @@ public partial class SpiderSolitaireForm : Form
             else
             {
                 g.FillRectangle(Brushes.Gray, 10, stockY, CardWidth, CardHeight);
-                using (var font = new Font("Arial", 14, FontStyle.Bold))
+                using (var font = new Font("Arial", 16, FontStyle.Bold))
                 {
                     g.DrawString($"Stock\n{stock.Count}", font, Brushes.White, 15, stockY + 20);
                 }
@@ -403,7 +440,7 @@ public partial class SpiderSolitaireForm : Form
         {
             int x = 200 + i * (CardWidth + FoundationSpacing);
             g.FillRectangle(Brushes.DarkGray, x, stockY, CardWidth, CardHeight);
-            using (var font = new Font("Arial", 12, FontStyle.Bold))
+            using (var font = new Font("Arial", 14, FontStyle.Bold))
             {
                 g.DrawString($"Complete\n{i + 1}", font, Brushes.White, x + 5, stockY + 40);
             }
@@ -481,6 +518,9 @@ public partial class SpiderSolitaireForm : Form
         if (animatingCards != null && animationFrame > 0)
         {
             float t = (float)animationFrame / AnimationFrames;
+            // Apply ease-out cubic easing for smoother animation
+            t = 1 - (float)Math.Pow(1 - t, 3);
+            
             int currentX = (int)(animationStart.X + (animationEnd.X - animationStart.X) * t);
             int currentY = (int)(animationStart.Y + (animationEnd.Y - animationStart.Y) * t);
             
@@ -998,6 +1038,17 @@ public partial class SpiderSolitaireForm : Form
         gamePanel?.Invalidate();
     }
     
+    private void TimeUpdateTimer_Tick(object? sender, EventArgs e)
+    {
+        // Only update display when seconds actually change to reduce CPU usage
+        int elapsedSeconds = (int)(DateTime.Now - startTime).TotalSeconds;
+        if (elapsedSeconds != lastDisplayedSeconds)
+        {
+            lastDisplayedSeconds = elapsedSeconds;
+            UpdateScore();
+        }
+    }
+    
     private string GetCardName(Card card)
     {
         string rank = card.Rank switch
@@ -1015,7 +1066,8 @@ public partial class SpiderSolitaireForm : Form
     {
         if (scoreLabel != null)
         {
-            int elapsedSeconds = (int)(DateTime.Now - startTime).TotalSeconds;
+            TimeSpan currentPausedTime = isPaused ? (DateTime.Now - pauseStartTime) : TimeSpan.Zero;
+            int elapsedSeconds = (int)((DateTime.Now - startTime) - pausedDuration - currentPausedTime).TotalSeconds;
             score = moves + elapsedSeconds; // Score = moves + seconds (lower is better)
             scoreLabel.Text = $"Moves: {moves} | Time: {elapsedSeconds}s | Score: {score} | Complete: {foundation.Count}/8";
         }
@@ -1091,12 +1143,53 @@ public partial class SpiderSolitaireForm : Form
         {
             this.Close();
         }
+        else if (e.KeyCode == Keys.P)
+        {
+            TogglePause();
+        }
+    }
+    
+    private void TogglePause()
+    {
+        isPaused = !isPaused;
+        
+        if (isPaused)
+        {
+            pauseStartTime = DateTime.Now;
+            timeUpdateTimer?.Stop();
+            if (pauseLabel != null)
+            {
+                pauseLabel.Visible = true;
+                pauseLabel.BringToFront();
+            }
+        }
+        else
+        {
+            // Add elapsed pause time to total paused duration
+            pausedDuration += DateTime.Now - pauseStartTime;
+            timeUpdateTimer?.Start();
+            if (pauseLabel != null)
+            {
+                pauseLabel.Visible = false;
+            }
+        }
+        
+        gamePanel?.Invalidate();
     }
     
     private void SpiderSolitaireForm_Resize(object? sender, EventArgs e)
     {
         // Game panel automatically resizes via Anchor property
         gamePanel?.Invalidate();
+        
+        // Center pause label
+        if (pauseLabel != null && gamePanel != null)
+        {
+            pauseLabel.Location = new Point(
+                (gamePanel.Width - pauseLabel.Width) / 2,
+                (gamePanel.Height - pauseLabel.Height) / 2
+            );
+        }
     }
     
     protected override void OnFormClosing(FormClosingEventArgs e)
@@ -1105,6 +1198,8 @@ public partial class SpiderSolitaireForm : Form
         animationTimer?.Dispose();
         hintTimer?.Stop();
         hintTimer?.Dispose();
+        timeUpdateTimer?.Stop();
+        timeUpdateTimer?.Dispose();
         
         // Dispose cached card images to prevent memory leaks
         foreach (var image in cardImageCache.Values)

@@ -21,6 +21,8 @@ public partial class PacManForm : Form
     private Button? settingsBtn;
     private Button? scoreboardBtn;
     private Button? newGameBtn;
+    private bool isPaused = false; // Pause state
+    private Label? pauseLabel; // Pause indicator
     
     // SVG Images
     private Image? pacmanImage;
@@ -125,6 +127,22 @@ public partial class PacManForm : Form
         };
         newGameBtn.Click += (s, e) => InitializeGame();
         this.Controls.Add(newGameBtn);
+        
+        // Pause label (centered on game panel)
+        pauseLabel = new Label
+        {
+            Text = "PAUSED\nPress P to Resume",
+            Font = new Font("Arial", 24, FontStyle.Bold),
+            ForeColor = Color.Yellow,
+            BackColor = Color.FromArgb(180, 0, 0, 0), // Semi-transparent black
+            TextAlign = ContentAlignment.MiddleCenter,
+            Size = new Size(300, 100),
+            Location = new Point(gamePanel.Left + (gamePanel.Width - 300) / 2, gamePanel.Top + (gamePanel.Height - 100) / 2),
+            Visible = false,
+            Anchor = AnchorStyles.None
+        };
+        this.Controls.Add(pauseLabel);
+        pauseLabel.BringToFront();
     }
     
     private void InitializeGame()
@@ -334,25 +352,51 @@ public partial class PacManForm : Form
     {
         switch (e.KeyCode)
         {
+            case Keys.P:
+                TogglePause();
+                break;
             case Keys.Escape:
                 this.Close();
                 break;
             case Keys.Up:
             case Keys.W:
-                pacmanDir = Direction.Up;
+                if (!isPaused) pacmanDir = Direction.Up;
                 break;
             case Keys.Down:
             case Keys.S:
-                pacmanDir = Direction.Down;
+                if (!isPaused) pacmanDir = Direction.Down;
                 break;
             case Keys.Left:
             case Keys.A:
-                pacmanDir = Direction.Left;
+                if (!isPaused) pacmanDir = Direction.Left;
                 break;
             case Keys.Right:
             case Keys.D:
-                pacmanDir = Direction.Right;
+                if (!isPaused) pacmanDir = Direction.Right;
                 break;
+        }
+    }
+    
+    private void TogglePause()
+    {
+        isPaused = !isPaused;
+        
+        if (isPaused)
+        {
+            gameTimer?.Stop();
+            if (pauseLabel != null)
+            {
+                pauseLabel.Visible = true;
+                pauseLabel.BringToFront();
+            }
+        }
+        else
+        {
+            gameTimer?.Start();
+            if (pauseLabel != null)
+            {
+                pauseLabel.Visible = false;
+            }
         }
     }
     
